@@ -1,11 +1,11 @@
 local wrongState = false
 
 local function getTrackDirection(car)
-    local t = ac.worldCoordinateToTrack(car.position)
+    local t = ac.worldCoordinateToTrackProgress(car.position)
     if not t then return nil end
 
-    local p1 = ac.trackToWorldCoordinate(t + 0.002)
-    local p2 = ac.trackToWorldCoordinate(t - 0.002)
+    local p1 = ac.trackProgressToWorldCoordinate(t + 0.002)
+    local p2 = ac.trackProgressToWorldCoordinate(t - 0.002)
 
     if not p1 or not p2 then return nil end
 
