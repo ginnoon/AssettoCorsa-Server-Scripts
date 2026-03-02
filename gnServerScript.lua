@@ -24,6 +24,14 @@ local gnServerEvent = ac.OnlineEvent({
   elseif eventMsg == 'teleport' and eventArg[1] == myCar.sessionID then
     physics.setCarPosition(0, eventArg[2], eventArg[3])
   elseif eventMsg == 'safety on' then
+    if safetyMode == false then
+      print('safetyMode!!')
+      if myCar.gas > .25 then
+        physics.forceUserThrottleFor(1, .25)
+      end
+      -- local passivePush = -50000 * myCar.speedKmh
+      -- physics.addForce(0, vec3(0, 0, 0), true, vec3(0, 0, passivePush), true)
+    end
     safetyMode = true
   elseif eventMsg == 'safety off' then
     safetyMode = false
@@ -36,12 +44,26 @@ local gnData = ac.connect({
   arg = ac.StructItem.string(256),
 }, true, ac.SharedNamespace.Shared)
 
+ac.onCarCollision(0, function (carIndex)
+  if carIndex ~= -1 and myCar.collisionDepth > .01 then
+    physics.disableCarCollisions(0)
+  end
+end)
+
 local adminSteamID = '76561199806619573'
 function script.update(dt)
   if sim.raceFlagType ~= ac.FlagType.ReturnToPits then
     hasPenalty = false
     currentPenaltySlowdownTime = 0
   end
+
+  if safetyMode then
+    local distanceToLeader = (ac.getCar.leaderboard(0).position - myCar.position):length()
+    distanceToLeader = math.max(0, math.min(distanceToLeader, 1000))
+    local passivePush = -500000 * math.max(0, myCar.speedKmh - 100) * sim.dt * (1 - (distanceToLeader / 1000))
+    physics.addForce(0, vec3(0, 0, 0), true, vec3(0, 0, passivePush), true)
+  end
+
   if ac.getUserSteamID() ~= adminSteamID then return end
   local currentMsg = gnData.msg
   if currentMsg == '' then
@@ -93,5 +115,16 @@ function script.drawUI(dt)
       ui.popAlignment()
       ui.popStyleVar()
     end)
+  end
+end
+
+do
+  if not ac.isModuleActive(ac.CSPModuleID.RainFX) then
+    local a = ac.getPatchVersion():find('preview') ~= nil
+    local msg = 'RainFX is not enabled. You may be disadvantaged.'
+    if not a then msg = msg + ' Would you like to install preview version?' end
+    if ui.toast(ui.Icons.Warning, msg) then
+      os.openURL('https://acstuff.club/s/C7DQJy1')
+    end
   end
 end
