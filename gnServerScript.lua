@@ -5,7 +5,11 @@ local hasPenalty = false
 local currentPenaltyTime = 0
 local oldLapCuts = 0;
 local minorPenalty = true;
+
 ac.onLapCompleted(0, function (carIndex, lapTime, valid, cuts, lapCount)
+  if carIndex == 0 and sim.raceSessionType == ac.SessionType.Race and lapCount >= ac.getSession(sim.currentSessionIndex).laps then
+    physics.setCarPenalty(ac.PenaltyType.BlackFlag)
+  end
 end)
 
 local safetyMode = false;
