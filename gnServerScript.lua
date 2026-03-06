@@ -2,12 +2,10 @@ local myCar = ac.getCar(0) or error()
 local sim = ac.getSim()
 
 local hasPenalty = false
-local currentPenaltySlowdownTime = 0
-ac.onMessage(function (title, description, type, time)
-  if type == 'illegal' and title:startsWith('PENALTY, SLOW DOWN') then
-    hasPenalty = true
-    currentPenaltySlowdownTime = tonumber(title:split(' ')[5]) or 0
-  end
+local currentPenaltyTime = 0
+local oldLapCuts = 0;
+local minorPenalty = true;
+ac.onLapCompleted(0, function (carIndex, lapTime, valid, cuts, lapCount)
 end)
 
 local safetyMode = false;
@@ -17,17 +15,17 @@ local gnServerEvent = ac.OnlineEvent({
   args = ac.StructItem.string(256)
 }, function (sender, data)
   local eventMsg, eventArg = data.message, stringify.parse(data.args) or ''
-  if eventMsg == 'remove penalty' and currentPenaltySlowdownTime > 0 then
-    physics.setCarPenalty(ac.PenaltyType.SlowDown, -currentPenaltySlowdownTime - 1)
+  if eventMsg == 'remove penalty' and currentPenaltyTime > 0 then
+    currentPenaltyTime = 0
   elseif eventMsg == 'penalty' and eventArg[1] == myCar.sessionID then
-    physics.setCarPenalty(ac.PenaltyType.SlowDown, 5)
+    currentPenaltyTime = currentPenaltyTime + 5
   elseif eventMsg == 'teleport' and eventArg[1] == myCar.sessionID then
     physics.setCarPosition(0, eventArg[2], eventArg[3])
   elseif eventMsg == 'safety on' then
     if safetyMode == false then
       print('safetyMode!!')
-      if myCar.gas > .25 then
-        physics.forceUserThrottleFor(1, .25)
+      if myCar.gas > .2 then
+        physics.forceUserThrottleFor(1, .2)
       end
       -- local passivePush = -50000 * myCar.speedKmh
       -- physics.addForce(0, vec3(0, 0, 0), true, vec3(0, 0, passivePush), true)
@@ -50,12 +48,30 @@ ac.onCarCollision(0, function (carIndex)
   end
 end)
 
+local mainMenu, shown = true, false
 local adminSteamID = '76561199806619573'
 function script.update(dt)
-  if sim.raceFlagType ~= ac.FlagType.ReturnToPits then
-    hasPenalty = false
-    currentPenaltySlowdownTime = 0
+  if oldLapCuts < myCar.lapCutsCount then
+    currentPenaltyTime = currentPenaltyTime + 5;
   end
+  oldLapCuts = myCar.lapCutsCount
+  if currentPenaltyTime > 0 then
+    ac.setMessage('Penalty', 'slow down for %.1fs or slow down to 35kmh' % currentPenaltyTime, 'illegal', .1)
+    if myCar.speedKmh <= 35 then
+      currentPenaltyTime = 0
+    end
+    if myCar.gas == 0 then
+      currentPenaltyTime = math.max(currentPenaltyTime - dt, 0)
+    end
+  end
+
+  if not shown and mainMenu and not sim.isInMainMenu and not ac.isModuleActive(ac.CSPModuleID.RainFX) then
+    local msg = 'RainFX is not enabled. (You may be disadvantaged)\n\nRainFX가 활성화되어 있지 않습니다. (불이익이 있을 수 있음)'
+    ui.modalPopup('WARNING', msg, 'Confirm', nil, nil, nil, function (okPressed)
+    end)
+    shown = true
+  end
+  mainMenu = sim.isInMainMenu
 
   if safetyMode then
     local distanceToLeader = (ac.getCar.leaderboard(0).position - myCar.position):length()
@@ -71,8 +87,8 @@ function script.update(dt)
   elseif currentMsg == '1/2 mass' then
     local targetBallast = (myCar.ballast == 0) and math.floor(-myCar.mass / 2) or 0
     physics.setCarBallast(0, targetBallast)
-  elseif currentMsg == 'remove penalty' and currentPenaltySlowdownTime > 0 then
-    physics.setCarPenalty(ac.PenaltyType.SlowDown, -currentPenaltySlowdownTime - 1)
+  elseif currentMsg == 'remove penalty' and currentPenaltyTime > 0 then
+    currentPenaltyTime = 0
   elseif currentMsg == 'remove penalty for all' then
     gnServerEvent{ message = 'remove penalty' }
   elseif currentMsg == 'teleport' then
@@ -91,7 +107,6 @@ end
 local safetySize = vec2(240, 80)
 local screenSize = const(vec2(sim.windowWidth, sim.windowHeight))
 local pos = vec2(screenSize.x, 640) / 2 - safetySize / 2
-
 function script.drawUI(dt)
   if safetyMode then
     ui.transparentWindow('safety', pos, safetySize, function ()
@@ -115,16 +130,5 @@ function script.drawUI(dt)
       ui.popAlignment()
       ui.popStyleVar()
     end)
-  end
-end
-
-do
-  if not ac.isModuleActive(ac.CSPModuleID.RainFX) then
-    local a = ac.getPatchVersion():find('preview') ~= nil
-    local msg = 'RainFX is not enabled. You may be disadvantaged.'
-    if not a then msg = msg + ' Would you like to install preview version?' end
-    if ui.toast(ui.Icons.Warning, msg) then
-      os.openURL('https://acstuff.club/s/C7DQJy1')
-    end
   end
 end
