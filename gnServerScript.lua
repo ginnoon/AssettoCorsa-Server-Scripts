@@ -46,16 +46,10 @@ local gnData = ac.connect({
   arg = ac.StructItem.string(256),
 }, true, ac.SharedNamespace.Shared)
 
-ac.onCarCollision(0, function (carIndex)
-  if carIndex ~= -1 and myCar.collisionDepth > .01 then
-    physics.disableCarCollisions(0)
-  end
-end)
-
 local mainMenu, shown = true, false
 local adminSteamID = '76561199806619573'
 function script.update(dt)
-  if oldLapCuts < myCar.lapCutsCount then
+  if sim.raceSessionType == ac.SessionType.Race and oldLapCuts < myCar.lapCutsCount then
     currentPenaltyTime = currentPenaltyTime + 5;
   end
   oldLapCuts = myCar.lapCutsCount
@@ -64,9 +58,10 @@ function script.update(dt)
     if myCar.speedKmh <= 35 then
       currentPenaltyTime = 0
     end
-    if myCar.gas == 0 then
-      currentPenaltyTime = math.max(currentPenaltyTime - dt, 0)
-    end
+      local changeRate = 0
+      if myCar.gas > 0 then changeRate = myCar.gas
+      else changeRate = -1 end
+      currentPenaltyTime = math.max(currentPenaltyTime + dt * changeRate, 0)
   end
 
   if not shown and mainMenu and not sim.isInMainMenu and not ac.isModuleActive(ac.CSPModuleID.RainFX) then
@@ -78,10 +73,16 @@ function script.update(dt)
   mainMenu = sim.isInMainMenu
 
   if safetyMode then
-    local distanceToLeader = (ac.getCar.leaderboard(0).position - myCar.position):length()
-    distanceToLeader = math.max(0, math.min(distanceToLeader, 1000))
-    local passivePush = -500000 * math.max(0, myCar.speedKmh - 100) * sim.dt * (1 - (distanceToLeader / 1000))
-    physics.addForce(0, vec3(0, 0, 0), true, vec3(0, 0, passivePush), true)
+    local leaderPos = ac.getCar.leaderboard(0).position
+    local distanceToLeader = (leaderPos - myCar.position):length()
+
+    local forward = myCar.look
+    local dot = forward:dot(myCar.velocity)
+
+    if dot > 0 then
+      local passivePush = -500000 * math.max(0, myCar.speedKmh - (distanceToLeader / 2) - 100) * sim.dt
+      physics.addForce(0, vec3(0,0,0), true, vec3(0, 0, passivePush), true)
+    end
   end
 
   if ac.getUserSteamID() ~= adminSteamID then return end
